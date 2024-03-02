@@ -11,19 +11,7 @@
 #      from a given movie's URL.
 # 3. Build a data frame by applying the functions to each url in our index.
 
-# box::use(
-#     rvest[...],    # scrape tools
-#     httr[...],     # url tools
-#     stringr[...],
-#     tibble[...],
-#     dplyr[...],
-#     tidyr[...],
-#     readr[...],
-#     purrr[...],
-#     memoise[...]
-# )
-
-library(httr)
+library(httr2)
 library(readr)
 library(rvest)
 library(stringr)
@@ -37,8 +25,8 @@ library(purrr)
 # ----------------------------------------------------------------------------
 
 # URL for the index page
-home_url <- "https://www.killjamesbond.com"
-film_index_url <- httr::modify_url(home_url, path = "scum-rankings")
+home_req = request("https://www.killjamesbond.com")
+film_index_url <- req_url_path_append(home_req, path = "scum-rankings")$url
 
 # index HTML source
 film_index_html <- rvest::read_html(film_index_url)
@@ -48,12 +36,13 @@ film_index_html <- rvest::read_html(film_index_url)
 # this gives us the grid
 grid_class <- ".gallery-grid-image-link"
 # gets each item
-film_grid_items <- rvest::html_elements(film_index_html, css = grid_class)
+film_grid_nodes <- rvest::html_elements(film_index_html, css = grid_class)
 
 # extract data from the grid items
-(film_titles <- film_grid_items |> rvest::html_nodes("img") |> rvest::html_attr("alt"))
-(film_title_stubs <- film_grid_items |> rvest::html_attr("href") |> stringr::str_remove("/"))
-(film_urls <- sapply(film_title_stubs, function(x) httr::modify_url(film_index_url, path = x)))
+(film_titles <- film_grid_nodes |> rvest::html_nodes("img") |> rvest::html_attr("alt"))
+(film_title_stubs <- film_grid_nodes |> rvest::html_attr("href") |> stringr::str_remove("/"))
+# named vec from sapply
+(film_urls <- sapply(film_title_stubs, function(x) req_url_path_append(home_req, path = x)$url))
 
 
 # ----------------------------------------------------------------------------
@@ -72,9 +61,6 @@ get_page_content <- function(url) {
     read_html(url) |>
     html_elements(".content")
 }
-
-film_urls[1] |>
-    get_page_content()
 
 movie_title <- function(url) {
     get_page_content(url) |>
