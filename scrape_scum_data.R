@@ -25,11 +25,19 @@ library(purrr)
 # ----------------------------------------------------------------------------
 
 # URL for the index page
-home_req = request("https://www.killjamesbond.com")
+# we use this specific snapshot from 2024 / 01 / 17
+archive_url = "https://web.archive.org/web/20240117205016"
+archive_req = request(archive_url)
+
+# we can create the extra url contents here
+home_url = "https://www.killjamesbond.com"
+home_req = request(home_url)
 film_index_url <- req_url_path_append(home_req, path = "scum-rankings")$url
 
+archive_film_index_url = req_url_path_append(archive_req, film_index_url)$url
+
 # index HTML source
-film_index_html <- rvest::read_html(film_index_url)
+film_index_html <- rvest::read_html(archive_film_index_url)
 
 # ---- links to each movie come from items in a grid --------
 
@@ -40,9 +48,20 @@ film_grid_nodes <- rvest::html_elements(film_index_html, css = grid_class)
 
 # extract data from the grid items
 (film_titles <- film_grid_nodes |> rvest::html_nodes("img") |> rvest::html_attr("alt"))
-(film_title_stubs <- film_grid_nodes |> rvest::html_attr("href") |> stringr::str_remove("/"))
+
+(film_title_stubs = film_grid_nodes |>
+    rvest::html_attr("href") |>
+    stringr::str_split(paste0(home_url, "/")) |>
+    lapply(function(x) x[2]) |>
+    unlist()
+)
+
 # named vec from sapply
 (film_urls <- sapply(film_title_stubs, function(x) req_url_path_append(home_req, path = x)$url))
+
+(archive_film_urls = sapply(film_urls,
+                           function(x) req_url_path_append(archive_req, path = x)$url
+))
 
 
 # ----------------------------------------------------------------------------
@@ -123,7 +142,7 @@ df <-
     tibble(
         index_title = film_titles,
         stub = film_title_stubs,
-        url = film_urls
+        url = archive_film_urls
     )
 
 
@@ -152,5 +171,5 @@ df <- df |>
 data <- df |>
     rename_all(tolower) |>
     rename_all(str_replace_all, " ", "_") |>
-    select(title, actor, year, smarm:misogyny, scum)
+    select(title, actor, year, scum_total_raw, smarm:misogyny, scum)
 
