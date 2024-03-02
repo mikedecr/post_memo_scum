@@ -1,122 +1,253 @@
 ---
 author: Michael DeCrescenzo
 categories: [code, r]
-title: 'Memoizing function calls for faster interfaces'
-subtitle: 'Web-scraping the S.C.U.M. data from "Kill James Bond"'
-# excerpt: |
-#     A blogdown website is more like a combination of modular components that are better managed independently, each component with its own repository.
-#     These modular components _come together_ at the nexus of the website, but the components do not _belong to_ the website.
-date: "2022-10-08"
+title: "Scraping the 'S.C.U.M. data from 'Kill James Bond'"
+subtitle: A case study in memoization
+date: "2024-03-02"
+execute:
+    echo: true
+
 knitr:
     opts_chunk:
         collapse: true
+# knitr:
+#     opts_chunk:
+#         collapse: true
 draft: false
-# image: "git_featured.png"
 ---
 
-# Memoizing
+This post describes the process for scraping "S.C.U.M." score data from the _Kill James Bond_ podcast website.
 
- - We don't like to unnecessarily re-compute things.
- - With data analysis code, we avoid re-computation by saving data in intermediate state, and then doing offshoot operations starting from the intermediate state.
- - If you want a functional API, you try not to deal with state directly.
-   Instead, you have some function `f` that would, if they were evaluated, take you from beginning state to intermediate state.
-   Your offshoot operations are some other functions `g`, `h`, and `j` that consume `f`.
-- If that process is expensive, I don't want to re-evaluate `f` separately for `g`, `h`, and `j`.
-  I prefer to pass, if I could, the result of one evaluation of `f` to each offshoot function.
- - Functions eat some `args` and return some `value`. 
-   If the function hasn't changed, and the `args` haven't changed, we don't need to re-compute the `value`.
+To implement this, we make use of a functional optimization concept called **memoization**.
+In short, memoization is _caching a function's return value_ to avoid re-executing a function that has already seen a set of arguments.
+Think of it like a lookup table from a function's arguments to its returned values.
+Preview, we use this method to avoid repeatedly parsing a web page's HTML content.
+
+This is also my first significant attempt at web scraping, so it was a useful exercise even if I didn't do everything to stylistic perfection.
+
+First, some background on the data.
 
 
-# Example: scraping the S.C.U.M. scores from the _Kill James Bond_ website
+## A _Kill James Bond_ and the S.C.U.M. scores
 
-## Some short background.
+> "We have a science-based system on this podcast."
 
-_Kill James Bond_ is a 
+_Kill James Bond_ is a comedic film review podcast where the hosts marathon the James Bond movie franchise "in an attempt to give 007 the socialist, feminist comeuppance he so richly deserves."
+I don't know how if "socialist" is the word I would use, but it is a culturally left-leaning critique of how the films depict gender, race, and government-sanctioned violence.
+It is quite funny and often genuinely insightful about film and storytelling broadly.
 
-## Roadmap
+At the end of each episode, the hosts rank each movie on a scale of 1 to 007 across four dimensions:
+
+- **S**marm
+- **C**ultural insensitivity
+- **U**nprovoked violence
+- **M**isogyny
+
+or "S.C.U.M.".^[
+    I am actually not sure of the minimum value is 0 or 1.
+    At any rate, 1 is the lowest component score any movie has received.
+]
+These four scores are summed to create a total scum score for the movie.^[
+    Enthusiasts for dimensional scaling and/or linear algebra will notice that summing the scores entails that all components are equally weighted.
+    Whether this is an appropriate assumption for a movie's "scumminess" is an open question.
+]
+
+
+# Memoization
+
+A function is a machine for turning an input into an output.
+A "pure" function is a special type of function that...
+
+- maps the same input to the same output every time (no randomness or statefulness);
+- has no side-effects (no mutation, no saved files, etc).
+
+A pure function most closely resembles the way we talk about functions in math: turning an input into an output the same way every time.
+But in computing it is necessary to refer to "pure" functions as a distinct category because computers can do all sorts of evil things that make functions behave unlike mathematical functions.
+
+Memoization is an optimization technique for pure functions, but we really care about the first bullet point only.
+It works like this:
+
+- A pure function is indistinguishable from a lookup table.
+  If you give me an input, I give you its output, the same way every time.
+- The first time a pure function is evaluated on a set of arguments, the returned value is stored in a hidden lookup table.
+- If the function is ever called with the same argument again, we can return the cached value from the lookup table instead of re-computing the value.
+
+This technique is valuable when the function is expensive and will be called multiple times.
+
+Here is a demonstration.
+We use Python because Python is makes it very easy to see the logic.
+Say I have a function called `double`, which returns two times its input.
+
+```{python}
+def double(x):
+    print(f"doubling {x}")
+    return 2 * x
+```
+
+I include this print statement to make explicit when the function is being evaluated.
+If I call this function three times, we will see three printed statements.
+
+```{python}
+double(4)
+double(4)
+double(4)
+```
+
+But now I want to memoize this function.
+I need to create a lookup table that will cache the function outputs for some given inputs.
+So we write a `memoize` function which takes a function as an argument and returns a memoized function.
+
+```{python}
+def memoize(func):
+    # create an empty dictionary to hold cached values
+    # the inner function will _enclose_ this dict
+    cache = {}
+    def _inner(*args):
+        # if we have seen these args before, return the already-computed value
+        if args in cache:
+            return cache[args]
+        # otherwise, save the computed value in the cache before returning
+        value = func(*args)
+        cache[args] = value
+        return value
+    # return the memoized function
+    return _inner
+```
+
+We use this to memoize our `double` function.
+
+```{python}
+memo_double = memoize(double)
+```
+
+From here on, my API should use `memo_double` instead of `double` if I want calls to this function to be cached.
+The first time I call `memo_double` with argument `4`, the function will be evaluated like normal.
+
+```{python}
+memo_double(4)
+```
+
+But subsequent calls with the same argument `4` simply return the already-computed value without re-evaluating the function.
+We know that this is working because repeated calls to `memo_double` return the correct value without any printing.
+That's because we aren't evaluating the `double` function anymore!
+We are only returning the value from the cache.
+
+```{python}
+memo_double(4)
+memo_double(4)
+```
+
+
+### Caching utilities in Python
+
+Python gives you this capability in the standard library using `functools.cache` as a function decorator.
+
+```{python}
+from functools import cache
+
+@cache
+def memo_double(x):
+    print(f"doubling {x}")
+    return 2 * x
+
+memo_double(16)
+memo_double(16)
+```
+
+But it only works with hashable arguments.
+Unhashable arguments like lists, sets, and dictionaries can not be cached.
+So although I can "double" a list...
+
+```{python}
+lst = [1, 2, 3]
+double(lst)
+```
+
+...I can not memoize the `double` function for a list argument.
+
+```{python}
+#| error: true
+memo_double(lst)
+```
+
+This makes caching in Python highly frustrating because Python is overflowing with mutable data types that cannot be hashed, such as lists, sets, dictionaries, data frames, and so on.
+Many functions use `**kwargs` to refer to a dictionary of named arguments.
+If you want to memoize these functions, tough luck.
+And it gets worse because some objects that are hashable, like regression model instances, can also be mutated arbitrarily (think: `model.fit(Y, X)`).
+
+In short, if you really want to implement a memoized API in python, you will likely have to implement your own caching utilities to sanitize these unhashable arguments into analogous "frozen" objects in order to memoize functions that take these objects are arguments.
+
+
+### Caching in R
+
+R has a third-party package called `memoise` that gives you a `memoise::memoise` function.
+I am not as familiar with caching in R, but because R has mostly immutable data (a behavior called "copy-on-modify"), memoizing _seems_ to be a bit smoother, even though memoizing isn't a standard library utility.
+
+```{r}
+# function to double its input
+double = function(x) {
+    print("doubling")
+    return(2 * x)
+}
+
+# memoised function
+memo_double = memoise::memoise(double)
+
+# no issue doubling a data frame
+example_df = data.frame(x = 1:10)
+memo_double(example_df)
+memo_double(example_df)
+```
+
+So even if I "mutate" a data frame by adding a column to an existing data frame without changing the name...
+
+```{r}
+example_df$y = 11:20
+```
+
+The `memoise` utility does not think it has seen this object before.
+
+```{r}
+memo_double(example_df)
+memo_double(example_df)
+```
+
+Which is exactly the behavior we would want in the more general case.
+
+
+## Scraping the S.C.U.M. data
 
 - On the website there is a page that lists all of the reviewed Bond movies and links to them.
 - For each movie, we want some basic metadata (film name, year, Bond actor) and its S.C.U.M. scores.
 
 
-# Example
-
-```{python}
-def slow_double(x):
-    from time import sleep
-    sleep(2)
-    return x * 2
-
-slow_double(4)
-```
-
-
-```{python}
-def memoize(function):
-    cache = {}
-    def internal(*args):
-        if args in cache:
-            return cache[args]
-        value = function(*args)
-        cache[args] = value
-        return value
-    return internal
-```
-
-
-```{python}
-faster_double = memoize(slow_double)
-faster_double(10)
-```
-
-```{python}
-@memoize
-def double(x):
-    return slow_double(x)
-
-double(5)
-```
-
-
-
-
 ```{r}
-slow_double <- function(x) {
-    message("sleeping...")
-    Sys.sleep(2)
-    return(x * 2)
-}
+#| eval: false
+
+# hacks from the other file, 
+# pasted here as inspo for the end of the post
+library(ggplot2)
+library("dplyr")
+
+scum_x_actor = data |>
+    summarize(
+        mean_scum = mean(scum),
+        first_year = min(year),
+        .by = actor
+    ) |>
+    arrange(desc(mean_scum))
+
+with(scum_x_actor, cor(mean_scum, first_year))
+with(scum_x_actor |> filter(actor != "George Lazenby"), cor(mean_scum, first_year))
+
+ggplot(scum_x_actor) +
+    aes(x = first_year, y = mean_scum) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    geom_smooth(data = filter(scum_x_actor, actor != "George Lazenby"),
+                method = "lm")
+
 ```
-
-```{r}
-slow_double(4)
-```
-
-
-```{r}
-memoize <- function(func) {
-    memo <- list()
-    internal <- function(x) {
-        str_arg <- as.character(x)
-        if (!is.null(memo[[str_arg]])) {
-            return(memo[[str_arg]])
-        }
-        value <- func(x)
-        memo[[str_arg]] <- value
-        return(value)
-    }
-    return(internal)
-}
-```
-
-```{r}
-mem_double <- memoize(slow_double)
-mem_double(4)
-mem_double(4)
-```
-
-
-
 
 
 
