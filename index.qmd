@@ -1,0 +1,123 @@
+---
+author: Michael DeCrescenzo
+categories: [code, r]
+title: 'Memoizing function calls for faster interfaces'
+subtitle: 'Web-scraping the S.C.U.M. data from "Kill James Bond"'
+# excerpt: |
+#     A blogdown website is more like a combination of modular components that are better managed independently, each component with its own repository.
+#     These modular components _come together_ at the nexus of the website, but the components do not _belong to_ the website.
+date: "2022-10-08"
+knitr:
+    opts_chunk:
+        collapse: true
+draft: false
+# image: "git_featured.png"
+---
+
+# Memoizing
+
+ - We don't like to unnecessarily re-compute things.
+ - With data analysis code, we avoid re-computation by saving data in intermediate state, and then doing offshoot operations starting from the intermediate state.
+ - If you want a functional API, you try not to deal with state directly.
+   Instead, you have some function `f` that would, if they were evaluated, take you from beginning state to intermediate state.
+   Your offshoot operations are some other functions `g`, `h`, and `j` that consume `f`.
+- If that process is expensive, I don't want to re-evaluate `f` separately for `g`, `h`, and `j`.
+  I prefer to pass, if I could, the result of one evaluation of `f` to each offshoot function.
+ - Functions eat some `args` and return some `value`. 
+   If the function hasn't changed, and the `args` haven't changed, we don't need to re-compute the `value`.
+
+
+# Example: scraping the S.C.U.M. scores from the _Kill James Bond_ website
+
+## Some short background.
+
+_Kill James Bond_ is a 
+
+## Roadmap
+
+- On the website there is a page that lists all of the reviewed Bond movies and links to them.
+- For each movie, we want some basic metadata (film name, year, Bond actor) and its S.C.U.M. scores.
+
+
+# Example
+
+```{python}
+def slow_double(x):
+    from time import sleep
+    sleep(2)
+    return x * 2
+
+slow_double(4)
+```
+
+
+```{python}
+def memoize(function):
+    cache = {}
+    def internal(*args):
+        if args in cache:
+            return cache[args]
+        value = function(*args)
+        cache[args] = value
+        return value
+    return internal
+```
+
+
+```{python}
+faster_double = memoize(slow_double)
+faster_double(10)
+```
+
+```{python}
+@memoize
+def double(x):
+    return slow_double(x)
+
+double(5)
+```
+
+
+
+
+```{r}
+slow_double <- function(x) {
+    message("sleeping...")
+    Sys.sleep(2)
+    return(x * 2)
+}
+```
+
+```{r}
+slow_double(4)
+```
+
+
+```{r}
+memoize <- function(func) {
+    memo <- list()
+    internal <- function(x) {
+        str_arg <- as.character(x)
+        if (!is.null(memo[[str_arg]])) {
+            return(memo[[str_arg]])
+        }
+        value <- func(x)
+        memo[[str_arg]] <- value
+        return(value)
+    }
+    return(internal)
+}
+```
+
+```{r}
+mem_double <- memoize(slow_double)
+mem_double(4)
+mem_double(4)
+```
+
+
+
+
+
+
+
