@@ -52,6 +52,97 @@ These four scores are summed to create a total scum score for the movie.^[
     Whether this is an appropriate assumption for a movie's "scumminess" is an open question.
 ]
 
+# Scraping plan
+
+- [site layout]()
+    - https://www.killjamesbond.com/scum-rankings
+    - https://www.killjamesbond.com/no-time-to-die
+- single example
+- multi-field example
+- archive caveat
+
+
+
+The organization of the page:
+
+```{mermaid}
+%%| echo: false
+flowchart TB
+  A[film-specific url] --> |"read_html()"| B[full page html]
+  B --> |"html_elements('.content')"| C[text elements]
+  C --> |"html_nodes('h1')"| D[movie title]
+  C --> |"html_nodes('h3')"| E[movie attributes]
+  E --> F[bond actor]
+  E -->  G[movie year]
+  E -->  H[scum total]
+  B --> |"get table elements"| J[Scum component data]
+```
+
+
+The interface we want:
+
+```{mermaid}
+%%| echo: false
+flowchart TB
+  A[film-specific url] --> D[movie title]
+  A -->  G[movie year]
+  A --> F[bond actor]
+  A -->  H[scum total]
+  A -->  J[Scum component data]
+```
+
+
+It is our job to take the hideous reality of the first graph and provide a sensible interface that feels like the second graph.
+
+We accomplish this by taking an explicitly functional view.
+Let's isolate just the part of the graph that gets us the scum component scores.
+We need multiple functions to get this data.
+First, we have to parse the html from the url.
+Then, we have to search the parsed html code for the table elements that contain the component names (e.g. `"Smarm"`) and values (e.g. `5`)
+
+```{mermaid}
+%%| echo: false
+flowchart TB
+  A[film-specific url] --> |"read_html()"| B[full page html]
+  B --> |"get_table_elements()"| J[Scum component data]
+```
+
+
+```{mermaid}
+%%| echo: false
+flowchart TB
+  A[film-specific url] --> |"read_html()"| B[full page html]
+  B --> |"get_table_elements()"| J[Scum component data]
+  A --> |"compose(get_table_elements, read_html)"| J[Scum component data]
+```
+
+```{mermaid}
+%%| echo: false
+flowchart TB
+  A[film-specific url] --> |"get_scum_data()"| J[scum data]
+```
+
+```{mermaid}
+flowchart TB
+  A[Hard edge] --> B(Round edge)
+  B --> C{Decision}
+  C --> D[Result one]
+  C --> E[Result two]
+```
+
+```{r}
+library(memoise)
+```
+
+```{r}
+example_url = "https://www.killjamesbond.com/dr-no"
+```
+
+```{r}
+read_html <- memoize(rvest::read_html)
+read_html(example_url)
+```
+
 
 # Memoization
 
@@ -99,19 +190,14 @@ So we write a `memoize` function which takes a function as an argument and retur
 
 ```{python}
 def memoize(func):
-    # create an empty dictionary to hold cached values
-    # the inner function will _enclose_ this dict
-    cache = {}
-    def _inner(*args):
-        # if we have seen these args before, return the already-computed value
-        if args in cache:
-            return cache[args]
-        # otherwise, save the computed value in the cache before returning
-        value = func(*args)
-        cache[args] = value
-        return value
-    # return the memoized function
-    return _inner
+    already_computed = {}
+    def _memoized_fn(*args):
+        if args in already_computed:
+            return already_computed[args]
+        computed_value = func(*args)
+        already_computed[args] = computed_value
+        return computed_value
+    return _memoized_fn
 ```
 
 We use this to memoize our `double` function.
