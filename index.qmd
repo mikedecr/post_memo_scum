@@ -3,7 +3,7 @@ author: Michael DeCrescenzo
 categories: [code, r]
 title: "Scraping the 'S.C.U.M.' data from 'Kill James Bond'"
 subtitle: A case for memoization
-date: "2024-03-02"
+date: "2024-03-09"
 
 execute:
     echo: true
