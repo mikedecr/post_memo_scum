@@ -70,7 +70,7 @@ So our first decision is that our API should be declarative (the interface descr
 What do I want, exactly?
 Every movie has four component S.C.U.M. scores and some other metadata (movie title, year, which actor played James Bond).
 So I want a way to map a movie to a tuple (or "record") of values.
-I want a function that would take me to each individual value...
+I want a set of functions that take me to each of these individual values...
 
 ```{mermaid}
 %%| echo: false
@@ -89,7 +89,7 @@ flowchart LR
 A[Movie] --> B["(Title, Year, Actor, SCUM scores)"]
 ```
 
-And of course, I should be a be able to generate an list of all movies from the website in order to compute this tuple of values for each movie.
+And of course, I should be a be able to generate a list of all movies from the website in order to compute this tuple of values for each movie.
 
 ```{mermaid}
 %%| echo: false
@@ -107,8 +107,8 @@ And if you navigate to the page for a [specific movie](https://www.killjamesbond
 So I can basically think of the problem like this:
 
 - Starting with the global site url, I can generate a sequence of film urls.
-- I write a function (call it `get_movie_data`) that takes a film url and generates a tuple or a "record" of SCUM scores and other metadata.
-- Map this `get_movie_data` over the sequence of film urls.
+- I write a function (call it `get_movie_data`) that takes a film url and generates a record of SCUM scores and other metadata.
+- Map the `get_movie_data` function over the sequence of film urls.
 
 In lispy pseudocode it's merely this...
 
