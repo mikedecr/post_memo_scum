@@ -26,7 +26,7 @@ If that sounds fuzzy, we explain it with more detail below.
 
 This is also my first significant attempt at web scraping, so it was a useful exercise even if I did not write the smoothest thing in the world.
 
-## A _Kill James Bond_ and the S.C.U.M. scores
+## _Kill James Bond_ and the S.C.U.M. scores
 
 First, some background on the data.
 
