@@ -10,30 +10,21 @@ library(memoise)
 #    list of grid elements    #
 ###############################
 
-# actually a "nodeset" which is I guess a set (vector) of xml nodes
-
 home_url = "https://www.killjamesbond.com"
-# film_index_url = "https://www.killjamesbond.com/scum-rankings"
-# film_index_html <- rvest::read_html(film_index_url)
-# grid_class <- ".gallery-grid-image-link"
-# film_grid_nodes <- rvest::html_elements(film_index_html, css = grid_class)
+archive_url = "https://web.archive.org/web/20240117205016"
+archive_home_url = append_url(archive_url, home_url)
 
 #############################################
 #    url slug and title from table nodes    #
 #############################################
 
-# href_slug = function(obj) {
-#     obj |> html_attr("href") |> str_remove("/")
-# }
-
-# img_alt_text = function(obj) {
-#     obj |> html_nodes("img") |> html_attr("alt")
-# }
-
 append_url = function(url, path) {
     req_url_path_append(request(url), path)$url
 }
 
+href_slug = function(obj) {
+    obj |> html_attr("href") |> str_remove("/")
+}
 
 get_film_urls = function(home) {
     grid_class <- ".gallery-grid-image-link"
@@ -45,23 +36,10 @@ get_film_urls = function(home) {
     sapply(slugs, function(s) append_url(home, s))
 }
 
-get_film_urls(home_url)
-archive_url = "https://web.archive.org/web/20240117205016"
-get_film_urls(append_url(archive_url, home_url))
-
-# lapply(film_grid_nodes, img_alt_text)
-
 
 ################################
 #    url to film attributes    #
 ################################
-
-film_slugs = sapply(film_grid_nodes, href_slug)
-film_urls = sapply(film_slugs, function(s) req_url_path_append(request(home_url), s)$url)
-
-u = film_urls[1]
-
-item = `[[`
 
 memo_read_html = memoize(read_html)
 
@@ -89,18 +67,16 @@ h3_content <- function(url) {
     url |> get_page_content() |> html_nodes("h3")
 }
 
-# actor and year
-expose_movie_attributes <- function(url) {
-    url |> h3_content() |> item(1) |> html_text() |> str_split(" - ") |> item(1)
-}
-
-# they list a sum of scum
+# they list their own scum score
 movie_scum_total <- function(url) {
     url |> h3_content() |> html_text() |> item(2) |> readr::parse_number()
 }
 
-# film_urls
-# movie_scum_total(film_urls[1])
+
+# actor and year
+expose_movie_attributes <- function(url) {
+    url |> h3_content() |> item(1) |> html_text() |> str_split(" - ") |> item(1)
+}
 
 movie_actor <- function(url) {
     url |> expose_movie_attributes() |> item(1)
@@ -161,20 +137,16 @@ movie_misogyny = function(url) {
 df = tibble(
     film_url = get_film_urls(home_url),
     title = map_chr(film_url, movie_title),
-    year = map_double(film_url, movie_year),
+    year = map_dbl(film_url, movie_year),
     actor = map_chr(film_url, movie_actor),
-    scum_raw = map_double(film_url, movie_scum_total),
-    smarm = map_double(film_url, movie_smarm),
-    cultural_insensitivity = map_double(film_url, movie_cultural_insensitivity),
-    unprovoked_violence = map_double(film_url, movie_unprovoked_violence),
-    misogyny = map_double(film_url, movie_misogyny),
+    scum_raw = map_dbl(film_url, movie_scum_total),
+    smarm = map_dbl(film_url, movie_smarm),
+    cultural_insensitivity = map_dbl(film_url, movie_cultural_insensitivity),
+    unprovoked_violence = map_dbl(film_url, movie_unprovoked_violence),
+    misogyny = map_dbl(film_url, movie_misogyny),
     scum = smarm + cultural_insensitivity + unprovoked_violence + misogyny
 )
 
-with(df, scum == scum_raw)
-df |> select(contains("scum"))
-
 # rbenchmark::benchmark(read_html(u))
 # rbenchmark::benchmark(memo_read_html(u))
-
 
