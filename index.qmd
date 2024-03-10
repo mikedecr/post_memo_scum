@@ -327,14 +327,16 @@ The url is the obvious access point for each film's data, so the interface shoul
 
 **Another idea: a "Python-flavored" approach would be to write a class that has a special `read_and_save_html` method.**
 When we call this class's `get_movie_title` method, for example, that method would internally call `read_and_save_html`, which would save the html data as an attribute on the object itself.
-More generally, when we call any of these `get_xyz` functions, we check to see if the html attribute is present, so we would only download the html code one time per url.
-This idea has some advantages, but it would require us to create `r length(film_urls)` class instances from all of our urls.
-In fairness, each of these objects could hold the url as an attribute, so it's still just `r length(film_urls)` objects, I don't see any point to this kind of object-oriented complexity.
-I _already have the data I need_, which is the url damnit, and I _already have_ the functions I need call on the url.
-I dont' want to bother with writing a class when I could keep the elegant `url --> value` interface pattern.
+More generally, when we call any of these `get_xyz` functions, we check to see if the html attribute is present, so we would only download the html code if it isn't already there.
+This idea has some advantages, but it would require the user to wrangle these single-use class instances instead of the urls.
+The urls are simple.
+This class, if I wrote it, would not be so simple.
+And any time I move from a simple thing to a complex thing, it is a compromise.
+I _already have the data I need_, which is the url damnit, and I _already have the functions I need_ to call on the url.
+Surely we can come up with a way to make this faster without compromising the elegant `url --> value` interface that we wanted to base our designs around.
 
-So instead: we **memoize** the `read_html` function.
-This gives us the same performance boost as the other methods (we download the html code just one time), but it does not compromise the interface interactions in any way.
+And we can, by **memoizing** the `read_html` function.
+Memoizing will give us the same performance boost as the other methods (we download the html code just one time), but it does not compromise the interface interactions in any way.
 Really.
 
 
