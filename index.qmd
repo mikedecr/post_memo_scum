@@ -575,9 +575,9 @@ Imagine our `get_movie_data` function looked like this:
           total = with(vals, smarm + cultural_insensitivity + unprovoked_violence + misogyny))
     }
     ```
-    Would that honestly be so bad?
-    I actually think this implementation is way less cluttered than the version we chose above.
-    `juxt` deserves some justice is all I'm saying.
+    Would that be so bad?
+    I actually think this feels less cluttered than the "official "version.
+    A little justice for `juxt` is all I'm saying.
 
 And here is the promised payoff.
 This is the whole routine, right here.
