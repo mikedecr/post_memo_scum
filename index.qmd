@@ -604,28 +604,45 @@ df = home_url |>
     print()
 ```
 
+Done!
+
+We might as well plot scumminess over time as a payoff for all of our hard work.
+
 ```{r}
 library(ggplot2)
-
-means_by_actor = df |>
-    summarize(
-        mean_smarm = mean(smarm),
-        mean_cultural_insensitivity = mean(cultural_insensitivity),
-        mean_unprovoked_violence = mean(unprovoked_violence),
-        mean_misogyny = mean(misogyny),
-        mean_scum = mean(scum_total_calc) / 4,
-        .by = actor
-    )
-
-means_by_actor |>
-    tidyr::pivot_longer(-actor) |>
-    (function(d) ggplot(d) +
-     aes(x = actor, y = value, fill = name) +
-     geom_col(position = "dodge") +
-     coord_flip()
-    )()
-
 ```
 
+```{r}
+ordered_levels = c(
+    smarm = "Smarm",
+    cultural_insensitivity = "Cultural Insensitivity",
+    unprovoked_violence = "Unprovoked Violence",
+    misogyny = "Misogyny",
+    avg_scum = "Normalized Total"
+)
 
+
+df |>
+    mutate(avg_scum = scum_total_calc / 4) |>
+    tidyr::pivot_longer(
+        c(smarm, cultural_insensitivity, unprovoked_violence, misogyny, avg_scum),
+    ) |>
+    (function(d)
+     ggplot(d) +
+     aes(x = year, y = value) +
+     facet_wrap(
+        ~ forcats::fct_relevel(name, names(ordered_levels)), 
+        labeller = as_labeller(ordered_levels)
+     ) +
+     # geom_line(color = "gray") +
+     # geom_point(aes(color = actor)) +
+     geom_col(aes(fill = actor), position = "dodge") +
+     labs(fill = "Actor", x = "Year", y = "Score") +
+     scale_y_continuous(breaks = 1:9) +
+     theme(panel.grid.minor.y = element_blank())
+    )()
+```
+
+Not the prettiest plot, but some things stand out.
+Although each score is only supposed to go from 1 to 7, we see that Connery once scored himself an 8 on misogyny, we have had a few 8s and even a 9 on cultural insensitivity, and Dalton scores a 9 on unprovoked violence (which was deeeeefinitely for License to Kill).
 
