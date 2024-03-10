@@ -546,7 +546,7 @@ get_movie_data = function(url) {
         misogyny = get_scum_component(url, "misogyny"),
         scum_total_raw = get_scum_total(url)
     )
-    total = with(d, smarm + cultural_insensitivity + unprovoked_violence + misogyny)
+    total = with(values, smarm + cultural_insensitivity + unprovoked_violence + misogyny)
     c(values, scum_total_calc = total)
 }
 ```
@@ -562,14 +562,19 @@ Imagine our `get_movie_data` function looked like this:
         compute_all_values = juxt(
             title = get_movie_title,
              actor = get_movie_actor,
-             # etc...
-             smarm = \(u) get_scum_component(u, name = "smarm")
-             # etc...
+             year = get_movie_year,
+             smarm = \(u) get_scum_component(u, name = "smarm"),
+             cultural_insensitivity = \(u) get_scum_component(u, name = "cultural_insensitivity"),
+             unprovoked_violence = \(u) get_scum_component(u, name = "unprovoked_violence"),
+             misogyny = \(u) get_scum_component(u, name = "misogyny")
         )
-        compute_all_values(url)
+        vals = compute_all_values(url)
+        c(vals,
+          total = with(vals, smarm + cultural_insensitivity + unprovoked_violence + misogyny))
     }
     ```
     Would that honestly be so bad?
+    I actually think this implementation is way less cluttered than the version we chose above.
     `juxt` deserves some justice is all I'm saying.
 
 And here is the promised payoff.
