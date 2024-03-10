@@ -1,173 +1,368 @@
 ---
 author: Michael DeCrescenzo
 categories: [code, r]
-title: "Scraping the 'S.C.U.M. data from 'Kill James Bond'"
-subtitle: A case study in memoization
+title: "Scraping the 'S.C.U.M.' data from 'Kill James Bond'"
+subtitle: A case for memoization
 date: "2024-03-02"
+
 execute:
     echo: true
-
 knitr:
     opts_chunk:
         collapse: true
-# knitr:
-#     opts_chunk:
-#         collapse: true
+        cache: true
+
 draft: false
 ---
 
 This post describes the process for scraping "S.C.U.M." score data from the _Kill James Bond_ podcast website.
 
-To implement this, we make use of a functional optimization concept called **memoization**.
-In short, memoization is _caching a function's return value_ to avoid re-executing a function that has already seen a set of arguments.
-Think of it like a lookup table from a function's arguments to its returned values.
-Preview, we use this method to avoid repeatedly parsing a web page's HTML content.
+To perform the scraping, we design a functional interface that lets us easily generate sequences of data and map functions over those sequences.
 
-This is also my first significant attempt at web scraping, so it was a useful exercise even if I didn't do everything to stylistic perfection.
+Along the way, we employ a functional optimization concept called **memoization**.
+Memoization, crudely, is when when a function "caches its own return value" to make repeated calls more efficient.
+Think of it like a function that remembers every argument it ever saw and every value it ever computed.
+If that sounds fuzzy, we explain it with more detail below.
 
-First, some background on the data.
-
+This is also my first significant attempt at web scraping, so it was a useful exercise even if I did not write the smoothest thing in the world.
 
 ## A _Kill James Bond_ and the S.C.U.M. scores
 
-> "We have a science-based system on this podcast."
+First, some background on the data.
 
 _Kill James Bond_ is a comedic film review podcast where the hosts marathon the James Bond movie franchise "in an attempt to give 007 the socialist, feminist comeuppance he so richly deserves."
 I don't know how if "socialist" is the word I would use, but it is a culturally left-leaning critique of how the films depict gender, race, and government-sanctioned violence.
-It is quite funny and often genuinely insightful about film and storytelling broadly.
+It is pretty funny and often genuinely insightful about film and storytelling broadly.
 
-At the end of each episode, the hosts rank each movie on a scale of 1 to 007 across four dimensions:
+
+### S.C.U.M. scores
+
+> "We have a science-based system on this podcast."
+
+At the end of each episode, the hosts rank each movie on a scale of 1[^lower] to 7[^upper] across four dimensions:
 
 - **S**marm
 - **C**ultural insensitivity
 - **U**nprovoked violence
 - **M**isogyny
 
-or "S.C.U.M.".^[
-    I am actually not sure of the minimum value is 0 or 1.
-    At any rate, 1 is the lowest component score any movie has received.
-]
-These four scores are summed to create a total scum score for the movie.^[
-    Enthusiasts for dimensional scaling and/or linear algebra will notice that summing the scores entails that all components are equally weighted.
-    Whether this is an appropriate assumption for a movie's "scumminess" is an open question.
-]
+or "S.C.U.M.".
+These four scores are summed to create a total scum score for the movie.[^summing]
 
-# Scraping plan
-
-- [site layout]()
-    - https://www.killjamesbond.com/scum-rankings
-    - https://www.killjamesbond.com/no-time-to-die
-- single example
-- multi-field example
-- archive caveat
+[^lower]: Or is the lower bound 0?
+    I actually don't know.
+    At any rate, 1 is the lowest score we see in the data.
+[^upper]: Some movies occasionally get scores greater than 7 also, which we may discuss in a future post that features the data.
+[^summing]: Is a simple sum appropriate?
+    A conversation for the next post. 
 
 
+## Scraping the S.C.U.M. data
 
-The organization of the page:
+We have to write some code.
+I am not an experienced web-scraper, but my gut feeling has always been that because websites can be idiosyncratic and prone to change, that any code you write to scrape data from the website might take on similar ugliness.
+So I wanted to design something that would make this as smooth as I could.
 
-```{mermaid}
-%%| echo: false
-flowchart TB
-  A[film-specific url] --> |"read_html()"| B[full page html]
-  B --> |"html_elements('.content')"| C[text elements]
-  C --> |"html_nodes('h1')"| D[movie title]
-  C --> |"html_nodes('h3')"| E[movie attributes]
-  E --> F[bond actor]
-  E -->  G[movie year]
-  E -->  H[scum total]
-  B --> |"get table elements"| J[Scum component data]
-```
+When we start our journey, the website is a black box.
+I know what I want, but I don't know how to get it.
+So our first decision is that our API should be declarative (the interface describes the desired results) rather than imperative (the interface describes the process).
 
-
-The interface we want:
+What do I want, exactly?
+Every movie has four component S.C.U.M. scores and some other metadata (movie title, year, which actor played James Bond).
+So I want a way to map a movie to a tuple (or "record") of values.
+I want a function that would take me to each individual value...
 
 ```{mermaid}
 %%| echo: false
-flowchart TB
-  A[film-specific url] --> D[movie title]
-  A -->  G[movie year]
-  A --> F[bond actor]
-  A -->  H[scum total]
-  A -->  J[Scum component data]
+flowchart LR
+A[Movie] --> B[Title]
+A[Movie] --> C[Year]
+A[Movie] --> D[Actor]
+A[Movie] --> E[S.C.U.M. Scores]
 ```
 
-
-It is our job to take the hideous reality of the first graph and provide a sensible interface that feels like the second graph.
-
-We accomplish this by taking an explicitly functional view.
-Let's isolate just the part of the graph that gets us the scum component scores.
-We need multiple functions to get this data.
-First, we have to parse the html from the url.
-Then, we have to search the parsed html code for the table elements that contain the component names (e.g. `"Smarm"`) and values (e.g. `5`)
+So that I could combine these values into a tuple like so:
 
 ```{mermaid}
 %%| echo: false
-flowchart TB
-  A[film-specific url] --> |"read_html()"| B[full page html]
-  B --> |"get_table_elements()"| J[Scum component data]
+flowchart LR
+A[Movie] --> B["(Title, Year, Actor, SCUM scores)"]
 ```
 
-
-```{mermaid}
-%%| echo: false
-flowchart TB
-  A[film-specific url] --> |"read_html()"| B[full page html]
-  B --> |"get_table_elements()"| J[Scum component data]
-  A --> |"compose(get_table_elements, read_html)"| J[Scum component data]
-```
+And of course, I should be a be able to generate an list of all movies from the website in order to compute this tuple of values for each movie.
 
 ```{mermaid}
 %%| echo: false
-flowchart TB
-  A[film-specific url] --> |"get_scum_data()"| J[scum data]
+flowchart LR
+A[Website] --> B[Movie A]
+A[Website] --> C[Movie B]
+A[Website] --> D[Movie C]
+B --> E["(Title, Year, Actor, SCUM scores)"]
+C --> F["(Title, Year, Actor, SCUM scores)"]
+D --> G["(Title, Year, Actor, SCUM scores)"]
 ```
 
-```{mermaid}
-flowchart TB
-  A[Hard edge] --> B(Round edge)
-  B --> C{Decision}
-  C --> D[Result one]
-  C --> E[Result two]
+To make this slightly more tangible, the [website](https://www.killjamesbond.com/) contains an [index page](https://www.killjamesbond.com/scum-rankings) that links out to each individual movie.
+And if you navigate to the page for a [specific movie](https://www.killjamesbond.com/dr-no), you see all the data you want to get.
+So I can basically think of the problem like this:
+
+- Starting with the global site url, I can generate a sequence of film urls.
+- I write a function (call it `get_movie_data`) that takes a film url and generates a tuple or a "record" of SCUM scores and other metadata.
+- Map this `get_movie_data` over the sequence of film urls.
+
+In lispy pseudocode it's merely this...
+
 ```
+(map get_movie_data 
+    (get_movie_urls home_url))
+```
+
+or in R, it would be like this:
 
 ```{r}
-library(memoise)
+#| eval: false
+home_url |>
+    get_movie_urls() |>
+    lapply(get_movie_data)
 ```
+
+This would give me a list with one element per film, and each film's element would be a record (really, a named list) of SCUM data.
+
+
+### Sequence of film URLs
+
+Now that we have an interface outline, we need an implementation to back it up.
+
+Let's start by making a `get_movie_urls` function.
+On the [film index page](https://www.killjamesbond.com/scum-rankings), there is a `".gallery-grid-image-link"` class, which holds one image per movie, alt text for each image, and a url that takes you to the film page if you click the image.
+So this is where we collect the film-specific urls.
 
 ```{r}
-example_url = "https://www.killjamesbond.com/dr-no"
+library(httr2)
+library(rvest)
+library(stringr)
+
+get_film_urls = function(home) {
+    film_index_url = append_url(home, "scum-rankings")
+    # the movies are indexed in a "grid" gallery
+    # make a list of html elements corresponding to each film's gallery entry
+    grid_nodes = home |>
+        append_url("scum-rankings") |>
+        read_html() |>
+        html_elements(css = ".gallery-grid-image-link")
+    # construct film URLs by selecting the hrefs for each film
+    # and appending that slug to the home url
+    slugs = Map(href_slug, grid_nodes)
+    sapply(slugs, function(s) append_url(home, s))
+}
+
+#helper functions:
+
+# this is just a safe way to modify urls
+append_url = function(url, path) {
+    req_url_path_append(request(url), path)$url
+}
+
+# extract the href field from an <a> anchor
+href_slug = function(obj) {
+    obj |> html_attr("href") |> str_remove("/")
+}
 ```
+
+Let's see how we did.
 
 ```{r}
-read_html <- memoize(rvest::read_html)
-read_html(example_url)
+home_url = "https://killjamesbond.com"
+(film_urls = get_film_urls(home_url))
 ```
 
+Looks good.
 
-# Memoization
+### Film-specific data
 
-A function is a machine for turning an input into an output.
-A "pure" function is a special type of function that...
+(Have I mentioned that I am not experienced with web scraping?
+Please try to remember that.)
 
-- maps the same input to the same output every time (no randomness or statefulness);
-- has no side-effects (no mutation, no saved files, etc).
+Recall what a [film page looks like](`r film_urls[1]`).
+<!-- https://www.killjamesbond.com/dr-no). -->
 
-A pure function most closely resembles the way we talk about functions in math: turning an input into an output the same way every time.
-But in computing it is necessary to refer to "pure" functions as a distinct category because computers can do all sorts of evil things that make functions behave unlike mathematical functions.
+- At the top there are headers containing the film title, the actor who played James Bond, and the year the film was released.
+- Below that, there is a table with data on each of four S.C.U.M. scores.
+- Below the S.C.U.M. table, there is a total S.C.U.M. score that should (in theory) be the sum of the component scores.
 
-Memoization is an optimization technique for pure functions, but we really care about the first bullet point only.
+We make this interface easy for the user by defining a function that takes a url and returns a particular data value, such as the movie's title or the "Smarm" score.
+This simple interface pattern---url in, value out---will let us easily apply this set of functions to the list of urls we created above.
+
+Here I show a first-cut at the interface.
+Each function has to do some variation on the same thing:
+
+- starting with a url, we first call `read_html` to collect the html code from each page url.
+- we then extract specific content fields from the html that correspond to each data field that we need.
+- Sometimes we need to sanitize certain fields or cast string values to numeric values, stuff like that.
+
+```{r}
+# I always think this helper function is unreasonably useful
+item = function(x, ...) x[[...]]
+
+get_movie_title = function(url) {
+    url |>
+        read_html() |>
+        html_nodes("h1") |>
+        html_text() |>
+        trimws()
+}
+
+get_movie_actor = function(url) {
+    url |>
+        read_html() |>
+        html_nodes("h3") |>
+        html_text() |>
+        item(1) |>
+        str_split(" - ") |>
+        unlist() |>
+        item(1) |>
+        trimws()
+}
+
+get_movie_year = function(url) {
+    url |>
+        read_html() |>
+        html_nodes("h3") |>
+        html_text() |>
+        item(1) |>
+        str_split(" - ") |>
+        unlist() |>
+        item(2) |>
+        readr::parse_number()
+}
+
+get_scum_total = function(url) {
+    url |>
+        read_html() |>
+        html_nodes("h3") |>
+        html_text() |>
+        item(2) |>
+        readr::parse_number()
+}
+
+get_all_scum_components = function(url) {
+    names = url |>
+        read_html() |>
+        html_nodes(".tg-soxh") |>
+        html_text() |>
+        tolower() |>
+        str_replace_all(" ", "_")
+    values = url |>
+        read_html() |>
+        html_nodes(".tg-3fto") |>
+        html_text() |>
+        readr::parse_number()
+    # returns a named vector
+    setNames(values, names)
+}
+
+get_scum_component = function(url, name) {
+    get_all_scum_components(url)[[name]]
+}
+```
+
+Here are the values we get when we evaluate these functions on an individual film url.
+
+```{r}
+ex = film_urls[1]
+
+get_movie_title(ex)
+get_movie_actor(ex)
+get_movie_year(ex)
+get_scum_total(ex)
+get_scum_component(ex, "smarm")
+get_scum_component(ex, "cultural_insensitivity")
+get_scum_component(ex, "unprovoked_violence")
+get_scum_component(ex, "misogyny")
+```
+
+So the user doesn't really have to know anything about scraping to get these data fields out of a film page.
+
+So we are done, right?
+Well, I haven't explained a concept from functional programming that you never asked to have explained to you.
+That's how you know we aren't done.
+
+
+### The code is too slow.
+
+It takes too long to run this set of functions.
+
+```{r}
+times = system.time(
+    list(
+        get_movie_title(film_urls[1]),
+        get_movie_actor(film_urls[1]),
+        get_movie_year(film_urls[1]),
+        get_scum_total(film_urls[1]),
+        get_scum_component(film_urls[1], "smarm"),
+        get_scum_component(film_urls[1], "cultural_insensitivity"),
+        get_scum_component(film_urls[1], "unprovoked_violence"),
+        get_scum_component(film_urls[1], "misogyny")
+    )
+)
+times
+```
+
+`r round(times['elapsed'], 1)` seconds per film?
+There are `r length(film_urls)` films to get through.
+It's not a _huge_ amount of time, but it longer than we need.
+
+The pain point is `read_html`.
+R has to visit a web page and copy all of the html code on the page.
+But because I call `read_html` in _every single one of these functions_, I pay this cost over and over.
+What can we do?
+
+**One idea: we could read the html once and save it into its own object.**
+We can then pass the html code to each value-getter function instead of the url.
+But I don't think this is a good idea for a few reasons.
+First, it asks the user code to hold onto a list of `r length(film_urls)` film URLs _and_ `r length(film_urls)` of their respective html objects, which is annoying.
+Secondly, it moves the user interface away from something intuitive (urls) and toward something less intuitive (globs of html code).
+It _bothers the user with implementation details that they shouldn't have to worry about_.
+The url is the obvious access point for each film's data, so the interface should settle for nothing less than the obvious entities.
+
+**Another idea: a "Python-flavored" approach would be to write a class that has a special `read_and_save_html` method.**
+When we call this class's `get_movie_title` method, for example, that method would internally call `read_and_save_html`, which would save the html data as an attribute on the object itself.
+More generally, when we call any of these `get_xyz` functions, we check to see if the html attribute is present, so we would only download the html code one time per url.
+This idea has some advantages, but it would require us to create `r length(film_urls)` class instances from all of our urls.
+In fairness, each of these objects could hold the url as an attribute, so it's still just `r length(film_urls)` objects, I don't see any point to this kind of object-oriented complexity.
+I _already have the data I need_, which is the url damnit, and I _already have_ the functions I need call on the url.
+I dont' want to bother with writing a class when I could keep the elegant `url --> value` interface pattern.
+
+So instead: we **memoize** the `read_html` function.
+This gives us the same performance boost as the other methods (we download the html code just one time), but it does not compromise the interface interactions in any way.
+Really.
+
+
+## A very brief intro to memoization
+
+A (pure) function is a machine for turning an input into an output.
+It is glorified lookup table.
+Give me a key, and I look up the associated value.
+
+Memoization is an optimization technique for pure functions that takes the "lookup table" interpretation of a function quite literally.
 It works like this:
 
-- A pure function is indistinguishable from a lookup table.
-  If you give me an input, I give you its output, the same way every time.
-- The first time a pure function is evaluated on a set of arguments, the returned value is stored in a hidden lookup table.
-- If the function is ever called with the same argument again, we can return the cached value from the lookup table instead of re-computing the value.
+- A pure function is "mathematically" indistinguishable from a lookup table.
+  If you give a function an input, it gives you its output, the same way every time.
+- The first time a function is evaluated on a set of arguments, the returned value is _stored in a hidden lookup table_ that the function holds onto and can consult whenever it is called.
+- If the function is ever called with the same argument more than once, it can return the _previously computed value_ from the table instead of recalculating the value from scratch again.
 
 This technique is valuable when the function is expensive and will be called multiple times.
 
-Here is a demonstration.
-We use Python because Python is makes it very easy to see the logic.
-Say I have a function called `double`, which returns two times its input.
+Here is a simple demonstration in Python, because Python makes it very clear to see the implementation.^[
+    Python has a memoization tool in the standard library: `functools.cache`.
+    But it only works with hashable function arguments.
+    Unfortunately a lot of Python is made of unhashable data, like lists, sets, dictionaries, Numpy arrays, and Pandas dataframes, which makes memoization challenging.
+    Furthermore, almost all data in Python is mutable, so if a memoized function returns a mutable object, and you mutate it later, then the memoized function can return something different from what you expect.
+    R has a third-party package called `memoise` that gives you a `memoise::memoise` function.
+    I am not as familiar with caching in R, but because R data is mostly immutable (R has "copy-on-modify"), memoizing feels smoother from my limited experience.
+]
+    Say I have a function called `double`, which returns two times its input.
 
 ```{python}
 def double(x):
@@ -175,8 +370,8 @@ def double(x):
     return 2 * x
 ```
 
-I include this print statement to make explicit when the function is being evaluated.
-If I call this function three times, we will see three printed statements.
+The print statement lets us know when the function is being evaluated.
+If I call this function several times, I see the print statement each time.
 
 ```{python}
 double(4)
@@ -185,156 +380,247 @@ double(4)
 ```
 
 But now I want to memoize this function.
-I need to create a lookup table that will cache the function outputs for some given inputs.
-So we write a `memoize` function which takes a function as an argument and returns a memoized function.
+So we write a `memoize` function, which takes a function as an argument and returns a memoized function as an output.
 
 ```{python}
 def memoize(func):
-    already_computed = {}
+    already_evaluated = {}
     def _memoized_fn(*args):
-        if args in already_computed:
-            return already_computed[args]
+        if args in already_evaluated:
+            return already_evaluated[args]
         computed_value = func(*args)
-        already_computed[args] = computed_value
+        already_evaluated[args] = computed_value
         return computed_value
     return _memoized_fn
 ```
 
-We use this to memoize our `double` function.
+`memoize` creates a lookup table called `already_evaluated` that associates an argument to a computed value every time the function sees a new argument.
+So the memoized function is a _closure_ that encloses the lookup table.
+
+So we create our memoized function that is just like the `double` function, but memoized.
 
 ```{python}
 memo_double = memoize(double)
 ```
 
-From here on, my API should use `memo_double` instead of `double` if I want calls to this function to be cached.
 The first time I call `memo_double` with argument `4`, the function will be evaluated like normal.
 
 ```{python}
 memo_double(4)
 ```
 
-But subsequent calls with the same argument `4` simply return the already-computed value without re-evaluating the function.
+But subsequent calls with the same argument `4` return the already-computed value without re-evaluating the function.
 We know that this is working because repeated calls to `memo_double` return the correct value without any printing.
-That's because we aren't evaluating the `double` function anymore!
-We are only returning the value from the cache.
 
 ```{python}
 memo_double(4)
 memo_double(4)
 ```
 
-
-### Caching utilities in Python
-
-Python gives you this capability in the standard library using `functools.cache` as a function decorator.
-
-```{python}
-from functools import cache
-
-@cache
-def memo_double(x):
-    print(f"doubling {x}")
-    return 2 * x
-
-memo_double(16)
-memo_double(16)
-```
-
-But it only works with hashable arguments.
-Unhashable arguments like lists, sets, and dictionaries can not be cached.
-So although I can "double" a list...
-
-```{python}
-lst = [1, 2, 3]
-double(lst)
-```
-
-...I can not memoize the `double` function for a list argument.
-
-```{python}
-#| error: true
-memo_double(lst)
-```
-
-This makes caching in Python highly frustrating because Python is overflowing with mutable data types that cannot be hashed, such as lists, sets, dictionaries, data frames, and so on.
-Many functions use `**kwargs` to refer to a dictionary of named arguments.
-If you want to memoize these functions, tough luck.
-And it gets worse because some objects that are hashable, like regression model instances, can also be mutated arbitrarily (think: `model.fit(Y, X)`).
-
-In short, if you really want to implement a memoized API in python, you will likely have to implement your own caching utilities to sanitize these unhashable arguments into analogous "frozen" objects in order to memoize functions that take these objects are arguments.
+The upside of this trick is that repeated function calls are only as expensive as a lookup table.
+The downside is we have to store the table in memory.
+But this isn't so bad; all of our alternative approaches needed to store the downloaded html code in memory anyway.
+If anything, memoization is _strictly better_ because we don't have to compromise our user interface in any way!
 
 
-### Caching in R
+## Reimplementing a memoized API.
 
-R has a third-party package called `memoise` that gives you a `memoise::memoise` function.
-I am not as familiar with caching in R, but because R has mostly immutable data (a behavior called "copy-on-modify"), memoizing _seems_ to be a bit smoother, even though memoizing isn't a standard library utility.
+Let's bring it back to the scraping example.
+
+First we get the memoization package and memoize the costly `read_html` function.
 
 ```{r}
-# function to double its input
-double = function(x) {
-    print("doubling")
-    return(2 * x)
+library(memoise)
+
+memo_read_html = memoize(read_html)
+```
+
+When we call `memo_read_html` for one film page, all of our data-selector functions can re-use that cached data without paying the cost of reading the html again.
+Nice!
+
+Now we need to replace all instances of `read_html` with `memo_read_html` in our interface functions.
+
+```{r}
+get_movie_title = function(url) {
+    url |>
+        memo_read_html() |>
+        html_nodes("h1") |>
+        html_text() |>
+        trimws()
 }
 
-# memoised function
-memo_double = memoise::memoise(double)
+get_movie_actor = function(url) {
+    url |>
+        memo_read_html() |>
+        html_nodes("h3") |>
+        html_text() |>
+        item(1) |>
+        str_split(" - ") |>
+        unlist() |>
+        item(1) |>
+        trimws()
+}
 
-# no issue doubling a data frame
-example_df = data.frame(x = 1:10)
-memo_double(example_df)
-memo_double(example_df)
+get_movie_year = function(url) {
+    url |>
+        memo_read_html() |>
+        html_nodes("h3") |>
+        html_text() |>
+        item(1) |>
+        str_split(" - ") |>
+        unlist() |>
+        item(2) |>
+        readr::parse_number()
+}
+
+get_scum_total = function(url) {
+    url |>
+        memo_read_html() |>
+        html_nodes("h3") |>
+        html_text() |>
+        item(2) |>
+        readr::parse_number()
+}
+
+get_all_scum_components = function(url) {
+    names = url |>
+        memo_read_html() |>
+        html_nodes(".tg-soxh") |>
+        html_text() |>
+        tolower() |>
+        str_replace_all(" ", "_")
+    values = url |>
+        memo_read_html() |>
+        html_nodes(".tg-3fto") |>
+        html_text() |>
+        readr::parse_number()
+    # returns a named vector
+    setNames(values, names)
+}
+
+# sike, it will also be useful to memoize this,
+# since we will call it 4 times per film
+memo_get_all_scum_components = memoize(get_all_scum_components)
+
+# use the memoized fn internally
+get_scum_component = function(url, name) {
+    memo_get_all_scum_components(url)[[name]]
+}
 ```
 
-So even if I "mutate" a data frame by adding a column to an existing data frame without changing the name...
+Now let's see how fast it takes to run all of these functions for one film.
 
 ```{r}
-example_df$y = 11:20
+memo_times = system.time(
+    list(
+        get_movie_title(film_urls[1]),
+        get_movie_actor(film_urls[1]),
+        get_movie_year(film_urls[1]),
+        get_scum_total(film_urls[1]),
+        get_scum_component(film_urls[1], "smarm"),
+        get_scum_component(film_urls[1], "cultural_insensitivity"),
+        get_scum_component(film_urls[1], "unprovoked_violence"),
+        get_scum_component(film_urls[1], "misogyny")
+    )
+)
+memo_times
 ```
 
-The `memoise` utility does not think it has seen this object before.
+`r memo_times['elapsed']` seconds, a `r round(times['elapsed'] / memo_times['elapsed'])`x speedup in this example.
+
+
+## Fulfilling our interface promise
+
+I promised that we would eventually get this into one function that maps us from a url to a tuple of data.
+R doesn't have tuples, so a named list will have to do.[^juxt]
 
 ```{r}
-memo_double(example_df)
-memo_double(example_df)
+get_movie_data = function(url) {
+    values = list(
+        title = get_movie_title(url),
+        actor = get_movie_actor(url),
+        year = get_movie_year(url),
+        smarm = get_scum_component(url, "smarm"),
+        cultural_insensitivity = get_scum_component(url, "cultural_insensitivity"),
+        unprovoked_violence = get_scum_component(url, "unprovoked_violence"),
+        misogyny = get_scum_component(url, "misogyny"),
+        scum_total_raw = get_scum_total(url)
+    )
+    total = with(d, smarm + cultural_insensitivity + unprovoked_violence + misogyny)
+    c(values, scum_total_calc = total)
+}
 ```
 
-Which is exactly the behavior we would want in the more general case.
+[^juxt]: Notice that I am calling a set of functions that each share the same signature, `url`.
+This is actually a perfect case for using a `juxt` combinator, which takes a sequence of functions and returns a lambda that produces a sequence of values.
+I got [made fun of](https://twitter.com/Apoorva__Lal/status/1758315348187811844) last time I brought up `juxt`.
+But look, if you design interfaces around sequence operations, then you will likely find situations where `juxt` makes sense.
+Imagine our `get_movie_data` function looked like this:
+    ```{r}
+    #| eval: false
+    get_movie_data = function(url) {
+        compute_all_values = juxt(
+            title = get_movie_title,
+             actor = get_movie_actor,
+             # etc...
+             smarm = \(u) get_scum_component(u, name = "smarm")
+             # etc...
+        )
+        compute_all_values(url)
+    }
+    ```
+    Would that honestly be so bad?
+    `juxt` deserves some justice is all I'm saying.
 
-
-## Scraping the S.C.U.M. data
-
-- On the website there is a page that lists all of the reviewed Bond movies and links to them.
-- For each movie, we want some basic metadata (film name, year, Bond actor) and its S.C.U.M. scores.
-
+And here is the promised payoff.
+This is the whole routine, right here.
+I start with a site url, I map it to a sequence of film urls, and then I apply `get_movie_data` to each film url.
+That's it.
 
 ```{r}
-#| eval: false
+records = home_url |>
+    get_film_urls() |>
+    lapply(get_movie_data)
 
-# hacks from the other file, 
-# pasted here as inspo for the end of the post
+head(records, 2)
+```
+
+I could do one better.
+Because this function returns a list of records, we could turn it into a data frame directly.
+
+```{r}
+#| message: false
+library(dplyr)
+
+df = home_url |>
+    get_film_urls() |>
+    lapply(get_movie_data) |>
+    bind_rows() |>
+    print()
+```
+
+```{r}
 library(ggplot2)
-library("dplyr")
 
-scum_x_actor = data |>
+means_by_actor = df |>
     summarize(
-        mean_scum = mean(scum),
-        first_year = min(year),
+        mean_smarm = mean(smarm),
+        mean_cultural_insensitivity = mean(cultural_insensitivity),
+        mean_unprovoked_violence = mean(unprovoked_violence),
+        mean_misogyny = mean(misogyny),
+        mean_scum = mean(scum_total_calc) / 4,
         .by = actor
-    ) |>
-    arrange(desc(mean_scum))
+    )
 
-with(scum_x_actor, cor(mean_scum, first_year))
-with(scum_x_actor |> filter(actor != "George Lazenby"), cor(mean_scum, first_year))
-
-ggplot(scum_x_actor) +
-    aes(x = first_year, y = mean_scum) +
-    geom_point() +
-    geom_smooth(method = "lm") +
-    geom_smooth(data = filter(scum_x_actor, actor != "George Lazenby"),
-                method = "lm")
+means_by_actor |>
+    tidyr::pivot_longer(-actor) |>
+    (function(d) ggplot(d) +
+     aes(x = actor, y = value, fill = name) +
+     geom_col(position = "dodge") +
+     coord_flip()
+    )()
 
 ```
-
 
 
 
