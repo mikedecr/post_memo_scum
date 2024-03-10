@@ -636,8 +636,6 @@ df |>
         ~ forcats::fct_relevel(name, names(ordered_levels)), 
         labeller = as_labeller(ordered_levels)
      ) +
-     # geom_line(color = "gray") +
-     # geom_point(aes(color = actor)) +
      geom_col(aes(fill = actor), position = "dodge") +
      labs(fill = "Actor", x = "Year", y = "Score") +
      scale_y_continuous(breaks = 1:9) +
