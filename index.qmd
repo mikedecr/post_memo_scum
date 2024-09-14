@@ -349,18 +349,19 @@ Give me a key, and I look up the associated value.
 Memoization is an optimization technique for pure functions that takes the "lookup table" interpretation of a function quite literally.
 It works like this:
 
-- A pure function is "mathematically" indistinguishable from a lookup table.
-  If you give a function an input, it gives you its output, the same way every time.
-- The first time a function is evaluated on a set of arguments, the returned value is _stored in a hidden lookup table_ that the function holds onto and can consult whenever it is called.
-- If the function is ever called with the same argument more than once, it can return the _previously computed value_ from the table instead of recalculating the value from scratch again.
+- The function holds an internal lookup table from every input it has received to every output it has computed.
+- The first time the function receives a particular input, the value must be calculated from scratch.
+  But before the value is returned, we associate the input to the output in this internal lookup table.
+- If the function is ever called with the same argument again, we don't need to compute the value from scratch.
+  We can instead lookup the previously computed value from the internal table.
 
-This technique is valuable when the function is expensive and will be called multiple times.
+This technique is valuable when a function is expensive and will be called multiple times.
 
 Here is a simple demonstration in Python, because Python makes it very clear to see the implementation.^[
     Python has a memoization tool in the standard library: `functools.cache`.
-    But it only works with hashable function arguments.
-    Unfortunately a lot of Python is made of unhashable data, like lists, sets, dictionaries, Numpy arrays, and Pandas dataframes, which makes memoization challenging.
-    Furthermore, almost all data in Python is mutable, so if a memoized function returns a mutable object, and you mutate it later, then the memoized function can return something different from what you expect.
+    But it only works with hashable function arguments (I guess the computed values are stored by the input hashes).
+    Unfortunately most data containers in python are unhashable, like lists, sets, dictionaries, Numpy arrays, and Pandas dataframes, which makes memoization challenging.
+    Furthermore, almost all data in Python is mutable, so if a memoized function returns a mutable object (such as a list, set, dictionary, etc.), and you mutate that object somewhere else, the memoized function will return the mutated value instead of the value it _would have computed_ from scratch.
     R has a third-party package called `memoise` that gives you a `memoise::memoise` function.
     I am not as familiar with caching in R, but because R data is mostly immutable (R has "copy-on-modify"), memoizing feels smoother from my limited experience.
 ]
